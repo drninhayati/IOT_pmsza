@@ -1,0 +1,99 @@
+#include <ESP8266WiFi.h>
+#include <PubSubClient.h>
+
+// WiFi Configuration
+const char* ssid = "NAMA_WIFI_ANDA";          // Gantikan dengan nama WiFi anda
+const char* password = "KATA_LALUAN_WIFI";    // Gantikan dengan kata laluan WiFi anda
+
+// ThingsBoard Configuration
+const char* mqtt_server = "demo.thingsboard.io";  // Pelayan ThingsBoard
+const char* access_token = "TOKEN_AKSES_ANDA";    // Gantikan dengan Access Token dari ThingsBoard
+
+// HC-SR04 Pin Configuration
+#define TRIG_PIN D5  // Pin Trig
+#define ECHO_PIN D6  // Pin Echo
+
+WiFiClient espClient;
+PubSubClient client(espClient);
+
+// Fungsi untuk menyambung ke WiFi
+void setup_wifi() {
+  Serial.println("Menyambung ke WiFi...");
+  WiFi.begin(ssid, password);
+
+  while (WiFi.status() != WL_CONNECTED) {
+    delay(500);
+    Serial.print(".");
+  }
+
+  Serial.println("\nWiFi Disambungkan!");
+  Serial.print("IP Address: ");
+  Serial.println(WiFi.localIP());
+}
+
+// Fungsi untuk membaca jarak dari HC-SR04
+float readDistance() {
+  digitalWrite(TRIG_PIN, LOW);
+  delayMicroseconds(2);
+  digitalWrite(TRIG_PIN, HIGH);
+  delayMicroseconds(10);
+  digitalWrite(TRIG_PIN, LOW);
+
+  long duration = pulseIn(ECHO_PIN, HIGH);
+  float distance = (duration * 0.034) / 2;  // Jarak dalam cm
+  return distance;
+}
+
+void setup() {
+  Serial.begin(115200);
+
+  // Konfigurasi Pin HC-SR04
+  pinMode(TRIG_PIN, OUTPUT);
+  pinMode(ECHO_PIN, INPUT);
+
+  // Sambungan WiFi dan MQTT
+  setup_wifi();
+  client.setServer(mqtt_server, 1883);
+
+  // Sambung ke ThingsBoard
+  while (!client.connected()) {
+    Serial.println("Menyambung ke ThingsBoard...");
+    if (client.connect("ESP8266_Client", access_token, NULL)) {
+      Serial.println("Berjaya Disambungkan ke ThingsBoard!");
+    } else {
+      Serial.print("Gagal, Kod ralat: ");
+      Serial.println(client.state());
+      delay(5000);
+    }
+  }
+}
+
+void loop() {
+  if (!client.connected()) {
+    while (!client.connected()) {
+      Serial.println("Menyambung semula ke ThingsBoard...");
+      if (client.connect("ESP8266_Client", access_token, NULL)) {
+        Serial.println("Berjaya Disambungkan!");
+      } else {
+        Serial.print("Gagal, Kod ralat: ");
+        Serial.println(client.state());
+        delay(5000);
+      }
+    }
+  }
+
+  client.loop();
+
+  // Baca jarak dan hantar ke ThingsBoard
+  float distance = readDistance();
+  Serial.print("Jarak: ");
+  Serial.print(distance);
+  Serial.println(" cm");
+
+  String payload = "{\"distance\":";
+  payload += String(distance);
+  payload += "}";
+  client.publish("v1/devices/me/telemetry", payload.c_str());
+
+  delay(2000);  // Hantar data setiap 2 saat
+}
