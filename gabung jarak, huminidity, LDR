@@ -1,0 +1,151 @@
+#include <ESP8266WiFi.h>
+#include <PubSubClient.h>
+#include <SimpleDHT.h>
+
+// WiFi Configuration
+const char* ssid = "NAMA_WIFI_ANDA";
+const char* password = "KATA_LALUAN_WIFI";
+
+// ThingsBoard Configuration
+const char* mqtt_server = "demo.thingsboard.io";
+const char* access_token = "TOKEN_AKSES_ANDA";
+
+// Pin Configuration
+#define LDR_PIN A0
+#define LED_PIN D5  // GPIO14
+#define TRIG_PIN D6  // HC-SR04 Trig Pin
+#define ECHO_PIN D7  // HC-SR04 Echo Pin
+#define DHTPIN D4  // Pin DHT11
+
+// Threshold for Light Intensity
+const int lightThreshold = 500;  // Ubah nilai ini untuk kepekaan cahaya
+
+// Objects
+SimpleDHT11 dht(DHTPIN);
+WiFiClient espClient;
+PubSubClient client(espClient);
+
+// Fungsi untuk menyambung ke WiFi
+void setup_wifi() {
+  Serial.println("Menyambung ke WiFi...");
+  WiFi.begin(ssid, password);
+
+  while (WiFi.status() != WL_CONNECTED) {
+    delay(500);
+    Serial.print(".");
+  }
+
+  Serial.println("\nWiFi Disambungkan!");
+  Serial.print("IP Address: ");
+  Serial.println(WiFi.localIP());
+}
+
+// Fungsi untuk menghantar data ke ThingsBoard
+void sendData(int lightValue, float distance, float suhu, float kelembapan) {
+  String payload = "{";
+  payload += "\"lightIntensity\":" + String(lightValue) + ",";
+  payload += "\"distance\":" + String(distance) + ",";
+  payload += "\"temperature\":" + String(suhu) + ",";
+  payload += "\"humidity\":" + String(kelembapan);
+  payload += "}";
+
+  Serial.print("Menghantar data: ");
+  Serial.println(payload);
+
+  client.publish("v1/devices/me/telemetry", payload.c_str());
+}
+
+// Fungsi untuk membaca jarak dari HC-SR04
+float readDistance() {
+  digitalWrite(TRIG_PIN, LOW);
+  delayMicroseconds(2);
+  digitalWrite(TRIG_PIN, HIGH);
+  delayMicroseconds(10);
+  digitalWrite(TRIG_PIN, LOW);
+
+  long duration = pulseIn(ECHO_PIN, HIGH);
+  float distance = (duration * 0.034) / 2;  // Jarak dalam cm
+  return distance;
+}
+
+void setup() {
+  Serial.begin(115200);
+
+  // Konfigurasi pin
+  pinMode(LED_PIN, OUTPUT);
+  pinMode(TRIG_PIN, OUTPUT);
+  pinMode(ECHO_PIN, INPUT);
+  digitalWrite(LED_PIN, LOW);  // Pastikan LED dimatikan
+
+  // Sambung ke WiFi
+  setup_wifi();
+
+  // Sambung ke ThingsBoard
+  client.setServer(mqtt_server, 1883);
+
+  while (!client.connected()) {
+    Serial.println("Menyambung ke ThingsBoard...");
+    if (client.connect("ESP8266_Client", access_token, NULL)) {
+      Serial.println("Berjaya Disambungkan ke ThingsBoard!");
+    } else {
+      Serial.print("Gagal, Kod ralat: ");
+      Serial.println(client.state());
+      delay(5000);
+    }
+  }
+}
+
+void loop() {
+  if (!client.connected()) {
+    while (!client.connected()) {
+      Serial.println("Menyambung semula ke ThingsBoard...");
+      if (client.connect("ESP8266_Client", access_token, NULL)) {
+        Serial.println("Berjaya Disambungkan!");
+      } else {
+        Serial.print("Gagal, Kod ralat: ");
+        Serial.println(client.state());
+        delay(5000);
+      }
+    }
+  }
+
+  client.loop();
+
+  // Baca nilai dari LDR
+  int lightValue = analogRead(LDR_PIN);
+  Serial.print("Bacaan Cahaya: ");
+  Serial.println(lightValue);
+
+  // Kawal LED berdasarkan nilai cahaya
+  if (lightValue < lightThreshold) {
+    digitalWrite(LED_PIN, HIGH);  // Hidupkan LED jika gelap
+    Serial.println("LED Hidup");
+  } else {
+    digitalWrite(LED_PIN, LOW);   // Matikan LED jika terang
+    Serial.println("LED Mati");
+  }
+
+  // Baca jarak dari HC-SR04
+  float distance = readDistance();
+  Serial.print("Jarak: ");
+  Serial.print(distance);
+  Serial.println(" cm");
+
+  // Baca suhu dan kelembapan dari DHT11
+  byte suhu = 0, kelembapan = 0;
+  if (dht.read(&suhu, &kelembapan, NULL)) {
+    Serial.println("Gagal membaca dari sensor DHT!");
+  } else {
+    Serial.print("Suhu: ");
+    Serial.print(suhu);
+    Serial.println(" °C");
+    Serial.print("Kelembapan: ");
+    Serial.print(kelembapan);
+    Serial.println(" %");
+  }
+
+  // Hantar data ke ThingsBoard
+  sendData(lightValue, distance, suhu, kelembapan);
+
+  delay(2000);  // Hantar data setiap 2 saat
+}
