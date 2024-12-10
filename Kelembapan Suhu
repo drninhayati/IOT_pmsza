@@ -1,0 +1,68 @@
+#include <ESP8266WiFi.h>
+#include <PubSubClient.h>
+#include <SimpleDHT.h>
+
+// WiFi Configuration
+const char* ssid = "NAMA_WIFI_ANDA";
+const char* password = "KATA_LALUAN_WIFI";
+
+// ThingsBoard Configuration
+const char* mqtt_server = "demo.thingsboard.io";
+const char* access_token = "TOKEN_AKSES_ANDA";
+
+// DHT Configuration
+#define DHTPIN D4
+SimpleDHT11 dht(DHTPIN);
+
+WiFiClient espClient;
+PubSubClient client(espClient);
+
+// ICACHE_FLASH_ATTR untuk fungsi jarang digunakan
+void ICACHE_FLASH_ATTR setup_wifi() {
+  Serial.println("Menyambung ke WiFi...");
+  WiFi.begin(ssid, password);
+
+  while (WiFi.status() != WL_CONNECTED) {
+    delay(500);
+    Serial.print(".");
+  }
+  Serial.println();
+  Serial.println("WiFi Disambungkan!");
+}
+
+void ICACHE_FLASH_ATTR sendData(float suhu, float kelembapan) {
+  String payload = "{";
+  payload += "\"temperature\":" + String(suhu) + ",";
+  payload += "\"humidity\":" + String(kelembapan);
+  payload += "}";
+  client.publish("v1/devices/me/telemetry", payload.c_str());
+}
+
+void setup() {
+  Serial.begin(115200);
+  setup_wifi();
+  client.setServer(mqtt_server, 1883);
+}
+
+void loop() {
+  if (!client.connected()) {
+    while (!client.connected()) {
+      if (client.connect("ESP8266_Client", access_token, NULL)) {
+        Serial.println("Berjaya Disambungkan ke ThingsBoard!");
+      } else {
+        delay(5000);
+      }
+    }
+  }
+
+  client.loop();
+
+  byte suhu = 0, kelembapan = 0;
+  if (dht.read(&suhu, &kelembapan, NULL)) {
+    Serial.println("Gagal membaca dari sensor DHT!");
+    return;
+  }
+
+  sendData(suhu, kelembapan);
+  delay(10000);
+}
