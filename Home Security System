@@ -61,3 +61,31 @@ void tutupPintu() {
   isDoorOpen = false;
   delay(1000); // Tunggu 1 saat sebelum membaca pergerakan seterusnya
 }
+
+
+
+
+Sambungan:
+ Reka Bentuk Sistem
+Input: Kad RFID akan dibaca oleh Wiegand Reader dan menghasilkan isyarat digital melalui pin D0 dan D1.
+Proses: ESP8266 akan menerima dan memproses data Wiegand (26 bit) dan membandingkan dengan ID yang dibenarkan.
+Output:
+Servo MG90S bergerak untuk membuka atau menutup kunci.
+LED hijau/merah dan buzzer memberikan isyarat kepada pengguna.
+3. Sambungan Perkakasan
+Wiegand Reader ke ESP8266:
+
+D0 → GPIO4 (D2).
+D1 → GPIO5 (D1).
+VCC → 5V.
+GND → GND.
+Servo Motor ke ESP8266:
+
+Signal → GPIO14 (D5).
+VCC → 5V.
+GND → GND.
+LED dan Buzzer:
+
+LED Hijau: Katod ke GND, Anod melalui resistor ke GPIO16 (D0).
+LED Merah: Katod ke GND, Anod melalui resistor ke GPIO3 (RX).
+Buzzer: Positif ke GPIO2 (D4), Negatif ke GND.
