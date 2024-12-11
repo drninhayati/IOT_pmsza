@@ -37,4 +37,70 @@ void setup() {
   pinMode(MOTION_SENSOR, INPUT);
   pinMode(BUZZER, OUTPUT);
 
-  
+  // Initialize WiFi
+  WiFi.begin(ssid, password);
+  while (WiFi.status() != WL_CONNECTED) {
+    delay(1000);
+    Serial.println("Connecting to WiFi...");
+  }
+  Serial.println("Connected to WiFi");
+
+  // Initialize MQTT
+  client.setServer(mqtt_server, 1883);
+  while (!client.connected()) {
+    if (client.connect("ESP8266Client")) {
+      Serial.println("Connected to ThingsBoard");
+    } else {
+      delay(2000);
+      Serial.println("Retrying connection to ThingsBoard...");
+    }
+  }
+}
+
+void loop() {
+  // Read Soil Moisture
+  soilMoisture = analogRead(SOIL_SENSOR);
+
+  // Read Temperature and Humidity
+  int err = dht11.read(&temperature, &humidity, NULL);
+  if (err != SimpleDHTErrSuccess) {
+    Serial.print("Read DHT11 failed, error: ");
+    Serial.println(err);
+    return;
+  }
+
+  // Read Motion Sensor
+  motionDetected = digitalRead(MOTION_SENSOR);
+
+  // Control Water Pump
+  if (soilMoisture < 300) {
+    digitalWrite(RELAY_PUMP, HIGH); // Turn ON Pump
+  } else if (soilMoisture > 400) {
+    digitalWrite(RELAY_PUMP, LOW); // Turn OFF Pump
+  }
+
+  // Control Fan
+  if (temperature > 30) {
+    digitalWrite(RELAY_FAN, HIGH); // Turn ON Fan
+  } else if (temperature < 28) {
+    digitalWrite(RELAY_FAN, LOW); // Turn OFF Fan
+  }
+
+  // Motion Detection
+  if (motionDetected) {
+    digitalWrite(BUZZER, HIGH); // Buzzer ON
+    delay(1000);
+    digitalWrite(BUZZER, LOW); // Buzzer OFF
+  }
+
+  // Send Data to ThingsBoard
+  String payload = String("{\"temperature\":") + temperature +
+                   ",\"humidity\":" + humidity +
+                   ",\"soilMoisture\":" + soilMoisture + "}";
+  client.publish("v1/devices/me/telemetry", payload.c_str());
+
+  // Allow MQTT client to process incoming commands
+  client.loop();
+
+  delay(2000);
+}
