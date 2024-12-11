@@ -1,0 +1,63 @@
+#include <Wiegand.h>
+#include <Servo.h>
+
+#define BUZZER_PIN 12
+#define PIR_PIN 14
+#define SERVO_PIN 13
+
+WIEGAND wg;
+Servo myServo;
+
+// Senarai ID kad yang dibenarkan
+String allowedID = "12345678"; // Tukar dengan ID kad RFID sebenar
+
+bool isDoorOpen = false;
+
+void setup() {
+  Serial.begin(115200);
+  wg.begin(4, 5); // D0 dan D1 pada GPIO4 dan GPIO5
+  myServo.attach(SERVO_PIN);
+  pinMode(BUZZER_PIN, OUTPUT);
+  pinMode(PIR_PIN, INPUT);
+  
+  // Servo mula dalam keadaan terkunci
+  myServo.write(0);
+  digitalWrite(BUZZER_PIN, LOW);
+  Serial.println("Sistem Keselamatan Sedia.");
+}
+
+void loop() {
+  // Bacaan RFID
+  if (wg.available()) {
+    String cardID = String(wg.getCode(), HEX);
+    cardID.toUpperCase();
+    Serial.println("Kad dibaca: " + cardID);
+
+    if (cardID == allowedID) {
+      bukaPintu();
+    } else {
+      Serial.println("Akses ditolak.");
+    }
+  }
+
+  // Bacaan PIR untuk tutup pintu
+  if (digitalRead(PIR_PIN) == HIGH && isDoorOpen) {
+    tutupPintu();
+  }
+}
+
+void bukaPintu() {
+  Serial.println("Pintu dibuka.");
+  myServo.write(90); // Servo bergerak ke kedudukan buka
+  digitalWrite(BUZZER_PIN, HIGH); // Buzzer berbunyi
+  isDoorOpen = true;
+  delay(3000); // Tunggu 3 saat untuk membolehkan pintu tetap terbuka
+}
+
+void tutupPintu() {
+  Serial.println("Pintu ditutup.");
+  myServo.write(0); // Servo bergerak ke kedudukan tutup
+  digitalWrite(BUZZER_PIN, LOW); // Buzzer berhenti berbunyi
+  isDoorOpen = false;
+  delay(1000); // Tunggu 1 saat sebelum membaca pergerakan seterusnya
+}
