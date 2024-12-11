@@ -1,0 +1,130 @@
+Spesifikasi Sistem
+ESP8266: Mikrodenyar utama untuk mengawal sistem dan menghantar data ke ThingsBoard.
+Gas Sensor (MQ-2): Mengesan kebocoran gas seperti LPG atau butana.
+SG90 Servo Motor: Membuka tingkap secara automatik apabila gas berbahaya dikesan.
+Buzzer: Memberi amaran bunyi.
+Exhaust Fan: Mengeluarkan gas berbahaya dari dapur.
+ThingsBoard: Platform IoT untuk pemantauan masa nyata dan logging data.
+Pendawaian Komponen
+Gas Sensor (MQ-2):
+
+Sambungkan pin VCC ke 3.3V pada ESP8266.
+Sambungkan pin GND ke GND.
+Sambungkan pin AO ke pin analog ESP8266 (A0).
+Servo Motor (SG90):
+
+Sambungkan pin kawalan ke pin digital (contohnya D7).
+Sambungkan pin VCC ke 5V dan GND ke GND ESP8266.
+Buzzer:
+
+Sambungkan pin positif ke pin digital (contohnya D5).
+Sambungkan pin negatif ke GND.
+Exhaust Fan (menggunakan relay):
+
+Sambungkan pin relay kawalan ke pin digital (contohnya D6).
+Sambungkan relay ke kipas ekzos sesuai dengan spesifikasi voltannya.
+
+#include <ESP8266WiFi.h>
+#include <PubSubClient.h>
+#include <Servo.h>
+
+// WiFi and MQTT Configuration
+const char* ssid = "Your_SSID";
+const char* password = "Your_PASSWORD";
+const char* mqtt_server = "demo.thingsboard.io"; // ThingsBoard MQTT Server
+const char* access_token = "Your_Device_Access_Token"; // Device Access Token
+
+WiFiClient espClient;
+PubSubClient client(espClient);
+
+// Pin assignments
+const int gasSensorPin = A0;
+const int buzzerPin = D5;
+const int fanRelayPin = D6;
+const int servoPin = D7;
+
+// Threshold for gas level
+int gasThreshold = 300;
+
+// Servo setup
+Servo windowServo;
+
+void setup() {
+  Serial.begin(115200);
+
+  // WiFi Connection
+  WiFi.begin(ssid, password);
+  while (WiFi.status() != WL_CONNECTED) {
+    delay(500);
+    Serial.println("Connecting to WiFi...");
+  }
+  Serial.println("Connected to WiFi");
+
+  // MQTT Setup
+  client.setServer(mqtt_server, 1883);
+
+  // Pin Initialization
+  pinMode(buzzerPin, OUTPUT);
+  pinMode(fanRelayPin, OUTPUT);
+  windowServo.attach(servoPin);
+  windowServo.write(0);  // Start with the window closed
+}
+
+void loop() {
+  // Reconnect to MQTT if disconnected
+  if (!client.connected()) {
+    reconnect();
+  }
+  client.loop();
+
+  // Read gas sensor value
+  int gasValue = analogRead(gasSensorPin);
+  Serial.println(gasValue);
+
+  // Publish data to ThingsBoard
+  publishData(gasValue);
+
+  // Control system based on gas level
+  if (gasValue > gasThreshold) {
+    // Gas detected: Open window, activate buzzer and fan
+    windowServo.write(90);
+    digitalWrite(buzzerPin, HIGH);
+    digitalWrite(fanRelayPin, HIGH);
+
+    // Publish states
+    client.publish("v1/devices/me/attributes", "{\"window\":\"open\",\"fan\":\"on\",\"buzzer\":\"active\"}");
+  } else {
+    // No gas: Close window, deactivate buzzer and fan
+    windowServo.write(0);
+    digitalWrite(buzzerPin, LOW);
+    digitalWrite(fanRelayPin, LOW);
+
+    // Publish states
+    client.publish("v1/devices/me/attributes", "{\"window\":\"closed\",\"fan\":\"off\",\"buzzer\":\"inactive\"}");
+  }
+
+  delay(1000); // 1 second delay
+}
+
+void reconnect() {
+  // Reconnect to MQTT
+  while (!client.connected()) {
+    Serial.println("Connecting to MQTT...");
+    if (client.connect("ESP8266_Client", access_token, NULL)) {
+      Serial.println("Connected to MQTT");
+    } else {
+      Serial.print("Failed to connect, retrying in 5 seconds...");
+      delay(5000);
+    }
+  }
+}
+
+void publishData(int gasValue) {
+  // Prepare payload in JSON format
+  String payload = "{\"gasLevel\":";
+  payload += gasValue;
+  payload += "}";
+
+  // Publish telemetry data to ThingsBoard
+  client.publish("v1/devices/me/telemetry", payload.c_str());
+}
