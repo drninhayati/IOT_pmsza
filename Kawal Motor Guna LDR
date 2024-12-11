@@ -1,0 +1,118 @@
+#include <ESP8266WiFi.h>
+#include <PubSubClient.h>
+#include <Servo.h>
+
+// WiFi Configuration
+const char* ssid = "NAMA_WIFI_ANDA";
+const char* password = "KATA_LALUAN_WIFI";
+
+// ThingsBoard Configuration
+const char* mqtt_server = "demo.thingsboard.io";
+const char* access_token = "TOKEN_AKSES_ANDA";
+
+// LDR and Servo Configuration
+#define LDR_PIN A0
+#define SERVO_PIN D5
+Servo myServo;
+
+// Threshold for light intensity
+const int lightThreshold = 800;  // Sesuaikan nilai ini dengan pembacaan LDR
+bool isDark = false;             // Default keadaan (gelap/terang)
+
+WiFiClient espClient;
+PubSubClient client(espClient);
+
+// Fungsi untuk menyambung ke WiFi
+void setup_wifi() {
+  Serial.println("Menyambung ke WiFi...");
+  WiFi.begin(ssid, password);
+
+  while (WiFi.status() != WL_CONNECTED) {
+    delay(500);
+    Serial.print(".");
+  }
+
+  Serial.println("\nWiFi Disambungkan!");
+  Serial.print("IP Address: ");
+  Serial.println(WiFi.localIP());
+}
+
+// Fungsi untuk menghantar data ke ThingsBoard
+void sendData(int lightValue) {
+  String payload = "{";
+  payload += "\"lightIntensity\":" + String(lightValue);
+  payload += "}";
+
+  Serial.print("Menghantar data: ");
+  Serial.println(payload);
+
+  client.publish("v1/devices/me/telemetry", payload.c_str());
+}
+
+void setup() {
+  Serial.begin(115200);
+
+  // Konfigurasi pin
+  pinMode(LDR_PIN, INPUT);
+  myServo.attach(SERVO_PIN);
+  myServo.write(0);  // Servo bermula di sudut 0 darjah sebagai default
+
+  // Sambung ke WiFi
+  setup_wifi();
+
+  // Sambung ke ThingsBoard
+  client.setServer(mqtt_server, 1883);
+
+  while (!client.connected()) {
+    Serial.println("Menyambung ke ThingsBoard...");
+    if (client.connect("ESP8266_Client", access_token, NULL)) {
+      Serial.println("Berjaya Disambungkan ke ThingsBoard!");
+    } else {
+      Serial.print("Gagal, Kod ralat: ");
+      Serial.println(client.state());
+      delay(5000);
+    }
+  }
+}
+
+void loop() {
+  if (!client.connected()) {
+    while (!client.connected()) {
+      Serial.println("Menyambung semula ke ThingsBoard...");
+      if (client.connect("ESP8266_Client", access_token, NULL)) {
+        Serial.println("Berjaya Disambungkan!");
+      } else {
+        Serial.print("Gagal, Kod ralat: ");
+        Serial.println(client.state());
+        delay(5000);
+      }
+    }
+  }
+
+  client.loop();
+
+  // Baca nilai dari LDR
+  int lightValue = analogRead(LDR_PIN);
+  Serial.print("Bacaan Cahaya: ");
+  Serial.println(lightValue);
+
+  // Hantar data ke ThingsBoard
+  sendData(lightValue);
+
+  // Kawal servo hanya apabila keadaan berubah
+  if (lightValue > lightThreshold && !isDark) {
+    // Cahaya gelap dan keadaan berubah ke gelap
+    myServo.write(90);  // Servo berpusing ke 90 darjah
+    delay(15);  // Berikan masa untuk servo bergerak
+    Serial.println("Cahaya gelap, servo berpusing ke 90 darjah.");
+    isDark = true;  // Tetapkan keadaan ke gelap
+  } else if (lightValue <= lightThreshold && isDark) {
+    // Cahaya cukup terang dan keadaan berubah ke terang
+    myServo.write(0);  // Servo kembali ke 0 darjah
+    delay(15);  // Berikan masa untuk servo bergerak
+    Serial.println("Cahaya terang, servo kembali ke 0 darjah.");
+    isDark = false;  // Tetapkan keadaan ke terang
+  }
+
+  delay(2000);  // Baca dan hantar data setiap 2 saat
+}
