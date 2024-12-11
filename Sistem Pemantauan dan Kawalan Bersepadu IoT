@@ -1,0 +1,94 @@
+#include <ESP8266WiFi.h>
+#include <Servo.h>
+#include <NewPing.h>
+#include <DHT.h>
+
+// Pin Ultrasonic Sensor
+#define TRIG_PIN D1
+#define ECHO_PIN D2
+#define MAX_DISTANCE 200 // Maksimum jarak dalam cm
+NewPing sonar(TRIG_PIN, ECHO_PIN, MAX_DISTANCE);
+
+// Pin Servo
+#define SERVO_PIN D3
+Servo myServo;
+
+// Pin LDR dan LED
+#define LDR_PIN A0
+#define LED_PIN D5
+
+// Pin DHT11
+#define DHT_PIN D4
+#define DHT_TYPE DHT11
+DHT dht(DHT_PIN, DHT_TYPE);
+
+// Threshold
+const int distanceThreshold = 30; // Jarak dalam cm untuk membuka pintu
+const int lightThreshold = 500;   // Nilai analog untuk menyalakan lampu
+
+void setup() {
+  Serial.begin(115200);
+
+  // Servo setup
+  myServo.attach(SERVO_PIN);
+  myServo.write(0); // Mulakan pintu dalam keadaan tutup
+
+  // LED setup
+  pinMode(LED_PIN, OUTPUT);
+  digitalWrite(LED_PIN, LOW);
+
+  // DHT setup
+  dht.begin();
+
+  // Ultrasonic Sensor setup
+  pinMode(TRIG_PIN, OUTPUT);
+  pinMode(ECHO_PIN, INPUT);
+}
+
+void loop() {
+  // Baca jarak dari Ultrasonic Sensor
+  int distance = sonar.ping_cm();
+  Serial.print("Jarak: ");
+  Serial.print(distance);
+  Serial.println(" cm");
+
+  // Kawal servo berdasarkan jarak
+  if (distance > 0 && distance < distanceThreshold) {
+    Serial.println("Pintu dibuka.");
+    myServo.write(90); // Buka pintu
+  } else {
+    Serial.println("Pintu ditutup.");
+    myServo.write(0); // Tutup pintu
+  }
+
+  // Baca nilai LDR
+  int lightValue = analogRead(LDR_PIN);
+  Serial.print("Nilai Cahaya: ");
+  Serial.println(lightValue);
+
+  // Kawal LED berdasarkan kecerahan
+  if (lightValue < lightThreshold) {
+    Serial.println("Lampu dinyalakan.");
+    digitalWrite(LED_PIN, HIGH); // Hidupkan lampu
+  } else {
+    Serial.println("Lampu dimatikan.");
+    digitalWrite(LED_PIN, LOW); // Matikan lampu
+  }
+
+  // Baca suhu dan kelembapan dari DHT11
+  float temperature = dht.readTemperature();
+  float humidity = dht.readHumidity();
+  if (isnan(temperature) || isnan(humidity)) {
+    Serial.println("Gagal membaca dari DHT sensor!");
+  } else {
+    Serial.print("Suhu: ");
+    Serial.print(temperature);
+    Serial.println(" °C");
+    Serial.print("Kelembapan: ");
+    Serial.print(humidity);
+    Serial.println(" %");
+  }
+
+  // Tunggu 1 saat sebelum ulang
+  delay(1000);
+}
