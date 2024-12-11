@@ -1,23 +1,26 @@
 Sambungan Elektrik
-Relay ke ESP8266:
+A. Relay ke ESP8266
 
-Sambungkan relay kepada pin digital ESP8266. Contohnya:
 Relay 1 (Lampu 1) → D1
 Relay 2 (Lampu 2) → D2
 Relay 3 (Lampu 3) → D3
 Relay 4 (Kipas) → D4
 Sambungkan pin VCC dan GND relay kepada 5V dan GND ESP8266.
-DHT11 ke ESP8266:
+B. LDR ke ESP8266
 
-Pin VCC DHT11 → 3.3V ESP8266
-Pin GND DHT11 → GND ESP8266
-Pin Data DHT11 → D5 ESP8266
-Lampu dan Kipas:
+Sambungkan LDR dalam voltage divider circuit:
+Satu hujung LDR ke 3.3V.
+Hujung lain LDR ke satu hujung resistor (10kΩ).
+Pusat sambungan LDR-resistor ke pin analog A0 ESP8266.
+Sambungkan hujung resistor yang lain ke GND.
+C. DHT11 ke ESP8266
 
-Sambungkan output relay kepada lampu dan kipas melalui sambungan AC 240V. Pastikan litar disambungkan dengan berhati-hati dan gunakan perlindungan (fuse/circuit breaker).
+Pin VCC DHT11 → 3.3V ESP8266.
+Pin GND DHT11 → GND ESP8266.
+Pin Data DHT11 → D5 ESP8266.
+D. Lampu dan Kipas
 
-
-Koding:
+Sambungkan output relay kepada lampu dan kipas melalui sambungan AC 240V dengan perlindungan (contohnya, fuse atau MCB).
 
 #include <ESP8266WiFi.h>
 #include <PubSubClient.h>
@@ -35,6 +38,7 @@ const char* token = "YOUR_ACCESS_TOKEN";
 #define RELAY_LAMP2 D2
 #define RELAY_LAMP3 D3
 #define RELAY_FAN D4
+#define LDR_PIN A0
 
 // DHT11 Sensor
 SimpleDHT11 dht11;
@@ -125,15 +129,33 @@ void loop() {
     return;
   }
 
-  // Papar nilai suhu dan kelembapan
-  Serial.print("Temperature: ");
-  Serial.print(temperature);
-  Serial.print("°C, Humidity: ");
-  Serial.print(humidity);
-  Serial.println("%");
+  // Bacaan nilai LDR
+  int ldrValue = analogRead(LDR_PIN);
+  Serial.print("LDR Value: ");
+  Serial.println(ldrValue);
+
+  // Kawalan Lampu berdasarkan nilai LDR
+  if (ldrValue < 500) { // Keadaan gelap
+    digitalWrite(RELAY_LAMP1, LOW);
+    digitalWrite(RELAY_LAMP2, LOW);
+    digitalWrite(RELAY_LAMP3, LOW);
+  } else { // Keadaan terang
+    digitalWrite(RELAY_LAMP1, HIGH);
+    digitalWrite(RELAY_LAMP2, HIGH);
+    digitalWrite(RELAY_LAMP3, HIGH);
+  }
+
+  // Kawalan Kipas berdasarkan suhu
+  if (temperature > 30) {
+    digitalWrite(RELAY_FAN, LOW); // Hidupkan kipas
+  } else {
+    digitalWrite(RELAY_FAN, HIGH); // Matikan kipas
+  }
 
   // Hantar data ke ThingsBoard
-  String payload = String("{\"temperature\":") + temperature + ",\"humidity\":" + humidity + "}";
+  String payload = String("{\"temperature\":") + temperature +
+                   ",\"humidity\":" + humidity +
+                   ",\"ldrValue\":" + ldrValue + "}";
   client.publish("v1/devices/me/telemetry", payload.c_str());
 
   delay(2000); // Tunggu 2 saat sebelum bacaan seterusnya
