@@ -1,32 +1,114 @@
+1. Fungsi Utama Sistem
+RFID Card Reader (125kHz Wiegand):
+Membaca kad RFID untuk mengesahkan akses.
+ESP8266:
+Mengawal keseluruhan sistem dan menghantar data ke ThingsBoard.
+MG90S Servo Motor:
+Membuka pintu apabila kad sah dan menutup pintu berdasarkan PIR sensor.
+Buzzer:
+Memberikan isyarat bunyi apabila pintu dibuka.
+PIR Motion Sensor:
+Menutup pintu apabila pergerakan dikesan.
+ThingsBoard:
+Untuk memantau aktiviti (akses berjaya/ditolak) dan status pintu secara real-time.
+2. Komponen Diperlukan
+RFID Card Reader (12V): Untuk membaca ID kad.
+ESP8266: NodeMCU atau Wemos D1 Mini.
+MG90S Servo Motor: Untuk mengawal pintu.
+PIR Motion Sensor: Untuk mengesan pergerakan.
+Buzzer: Untuk memberi isyarat.
+DC-DC Step-Down Converter: Untuk menurunkan 12V RFID ke 5V untuk ESP8266.
+Bekalan kuasa: 12V untuk RFID dan 5V untuk ESP8266 dan komponen lain.
+3. Sambungan Perkakasan
+1. Sambungan RFID Reader ke ESP8266 (Wiegand Protocol):
+D0 → GPIO4 (D2)
+D1 → GPIO5 (D1)
+VCC (12V) → DC-DC Converter → 5V → ESP8266 VCC
+GND → GND ESP8266
+2. Sambungan PIR Sensor ke ESP8266:
+OUT → GPIO14 (D5)
+VCC → 5V
+GND → GND
+3. Sambungan Servo Motor ke ESP8266:
+Signal → GPIO13 (D7)
+VCC → 5V
+GND → GND
+4. Sambungan Buzzer ke ESP8266:
+Positif → GPIO12 (D6)
+Negatif → GND
+4. ThingsBoard Setup
+Buat Peranti:
+
+Daftar peranti baharu di ThingsBoard.
+Dapatkan Access Token untuk ESP8266.
+Data Telemetri:
+
+Data yang dihantar:
+Status pintu: Terbuka atau Tertutup.
+Akses: Berjaya atau Ditolak.
+ID Kad RFID.
+Dashboard:
+
+Buat dashboard untuk memantau status pintu dan log akses
+
+Pustaka Diperlukan
+Wiegand library: Muat turun di sini. https://github.com/monkeyboard/Wiegand-Protocol-Library-for-Arduino 
+
+KODING:
+
 #include <Wiegand.h>
 #include <Servo.h>
+#include <ESP8266WiFi.h>
+#include <PubSubClient.h>
 
 #define BUZZER_PIN 12
 #define PIR_PIN 14
 #define SERVO_PIN 13
 
+// Wiegand RFID Reader
 WIEGAND wg;
 Servo myServo;
 
-// Senarai ID kad yang dibenarkan
-String allowedID = "12345678"; // Tukar dengan ID kad RFID sebenar
+// WiFi dan ThingsBoard
+const char* ssid = "WiFi_Nama"; // Ganti dengan WiFi anda
+const char* password = "WiFi_Password"; // Ganti dengan kata laluan WiFi
+const char* mqtt_server = "demo.thingsboard.io";
+const char* access_token = "ACCESS_TOKEN"; // Ganti dengan access token ThingsBoard
 
+WiFiClient espClient;
+PubSubClient client(espClient);
+
+// Status sistem
 bool isDoorOpen = false;
+String allowedID = "12345678"; // Ganti dengan ID RFID sebenar
 
 void setup() {
   Serial.begin(115200);
+  WiFi.begin(ssid, password);
+
+  while (WiFi.status() != WL_CONNECTED) {
+    delay(1000);
+    Serial.println("Menyambung ke WiFi...");
+  }
+  Serial.println("WiFi tersambung.");
+
+  client.setServer(mqtt_server, 1883);
+
   wg.begin(4, 5); // D0 dan D1 pada GPIO4 dan GPIO5
   myServo.attach(SERVO_PIN);
   pinMode(BUZZER_PIN, OUTPUT);
   pinMode(PIR_PIN, INPUT);
   
-  // Servo mula dalam keadaan terkunci
-  myServo.write(0);
+  myServo.write(0); // Servo mula dalam kedudukan terkunci
   digitalWrite(BUZZER_PIN, LOW);
-  Serial.println("Sistem Keselamatan Sedia.");
 }
 
 void loop() {
+  if (!client.connected()) {
+    reconnectMQTT();
+  }
+  client.loop();
+
   // Bacaan RFID
   if (wg.available()) {
     String cardID = String(wg.getCode(), HEX);
@@ -35,14 +117,17 @@ void loop() {
 
     if (cardID == allowedID) {
       bukaPintu();
+      hantarStatus("Pintu dibuka", cardID, "Berjaya");
     } else {
       Serial.println("Akses ditolak.");
+      hantarStatus("Pintu terkunci", cardID, "Ditolak");
     }
   }
 
   // Bacaan PIR untuk tutup pintu
   if (digitalRead(PIR_PIN) == HIGH && isDoorOpen) {
     tutupPintu();
+    hantarStatus("Pintu terkunci", "-", "Pintu ditutup oleh PIR");
   }
 }
 
@@ -51,7 +136,7 @@ void bukaPintu() {
   myServo.write(90); // Servo bergerak ke kedudukan buka
   digitalWrite(BUZZER_PIN, HIGH); // Buzzer berbunyi
   isDoorOpen = true;
-  delay(3000); // Tunggu 3 saat untuk membolehkan pintu tetap terbuka
+  delay(3000); // Pintu tetap terbuka selama 3 saat
 }
 
 void tutupPintu() {
@@ -59,33 +144,22 @@ void tutupPintu() {
   myServo.write(0); // Servo bergerak ke kedudukan tutup
   digitalWrite(BUZZER_PIN, LOW); // Buzzer berhenti berbunyi
   isDoorOpen = false;
-  delay(1000); // Tunggu 1 saat sebelum membaca pergerakan seterusnya
+  delay(1000);
 }
 
+void hantarStatus(String statusPintu, String idKad, String statusAkses) {
+  String payload = "{\"pintu\":\"" + statusPintu + "\",\"id_kad\":\"" + idKad + "\",\"status_akses\":\"" + statusAkses + "\"}";
+  client.publish("v1/devices/me/telemetry", payload.c_str());
+}
 
-
-
-Sambungan:
- Reka Bentuk Sistem
-Input: Kad RFID akan dibaca oleh Wiegand Reader dan menghasilkan isyarat digital melalui pin D0 dan D1.
-Proses: ESP8266 akan menerima dan memproses data Wiegand (26 bit) dan membandingkan dengan ID yang dibenarkan.
-Output:
-Servo MG90S bergerak untuk membuka atau menutup kunci.
-LED hijau/merah dan buzzer memberikan isyarat kepada pengguna.
-3. Sambungan Perkakasan
-Wiegand Reader ke ESP8266:
-
-D0 → GPIO4 (D2).
-D1 → GPIO5 (D1).
-VCC → 5V.
-GND → GND.
-Servo Motor ke ESP8266:
-
-Signal → GPIO14 (D5).
-VCC → 5V.
-GND → GND.
-LED dan Buzzer:
-
-LED Hijau: Katod ke GND, Anod melalui resistor ke GPIO16 (D0).
-LED Merah: Katod ke GND, Anod melalui resistor ke GPIO3 (RX).
-Buzzer: Positif ke GPIO2 (D4), Negatif ke GND.
+void reconnectMQTT() {
+  while (!client.connected()) {
+    Serial.println("Menyambung ke ThingsBoard...");
+    if (client.connect("ESP8266", access_token, NULL)) {
+      Serial.println("ThingsBoard tersambung.");
+    } else {
+      Serial.print("Gagal sambung, cuba lagi dalam 5 saat...");
+      delay(5000);
+    }
+  }
+}
