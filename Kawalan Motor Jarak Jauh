@@ -1,0 +1,109 @@
+#include <ESP8266WiFi.h>
+#include <PubSubClient.h>
+#include <Servo.h>
+
+// WiFi Configuration
+const char* ssid = "NAMA_WIFI_ANDA";
+const char* password = "KATA_LALUAN_WIFI";
+
+// ThingsBoard Configuration
+const char* mqtt_server = "demo.thingsboard.io";
+const char* access_token = "TOKEN_AKSES_ANDA";
+
+// Servo Configuration
+#define SERVO_PIN D5  // GPIO14
+Servo myServo;
+
+WiFiClient espClient;
+PubSubClient client(espClient);
+
+void setup_wifi() {
+  Serial.println("Menyambung ke WiFi...");
+  WiFi.begin(ssid, password);
+
+  while (WiFi.status() != WL_CONNECTED) {
+    delay(500);
+    Serial.print(".");
+  }
+
+  Serial.println("\nWiFi Disambungkan!");
+  Serial.print("IP Address: ");
+  Serial.println(WiFi.localIP());
+}
+
+void callback(char* topic, byte* payload, unsigned int length) {
+  Serial.print("Topik diterima: ");
+  Serial.println(topic);
+
+  String message;
+  for (unsigned int i = 0; i < length; i++) {
+    message += (char)payload[i];
+  }
+  Serial.print("Payload: ");
+  Serial.println(message);
+
+  if (message.indexOf("\"method\":\"getState\"") != -1) {
+    Serial.println("Memproses getState...");
+    int currentAngle = myServo.read();
+    String response = "{\"currentAngle\":";
+    response += String(currentAngle);
+    response += "}";
+    client.publish("v1/devices/me/telemetry", response.c_str());
+    Serial.print("Respons dihantar: ");
+    Serial.println(response);
+  } else if (message.indexOf("\"method\":\"setState\"") != -1) {
+    Serial.println("Memproses setState...");
+    int start = message.indexOf("params") + 8;
+    int end = message.indexOf("}") - 1;
+    String value = message.substring(start, end);
+    int angle = value.toInt();
+
+    if (angle >= 0 && angle <= 180) {
+      myServo.write(angle);
+      Serial.print("Servo bergerak ke sudut: ");
+      Serial.println(angle);
+    } else {
+      Serial.println("Sudut tidak sah!");
+    }
+  }
+}
+
+void setup() {
+  Serial.begin(115200);
+  myServo.attach(SERVO_PIN);
+
+  setup_wifi();
+
+  client.setServer(mqtt_server, 1883);
+  client.setCallback(callback);
+
+  while (!client.connected()) {
+    Serial.println("Menyambung ke ThingsBoard...");
+    if (client.connect("ESP8266_Client", access_token, NULL)) {
+      Serial.println("Berjaya Disambungkan ke ThingsBoard!");
+      client.subscribe("v1/devices/me/rpc/request/+");
+    } else {
+      Serial.print("Gagal, Kod ralat: ");
+      Serial.println(client.state());
+      delay(5000);
+    }
+  }
+}
+
+void loop() {
+  if (!client.connected()) {
+    while (!client.connected()) {
+      Serial.println("Menyambung semula ke ThingsBoard...");
+      if (client.connect("ESP8266_Client", access_token, NULL)) {
+        Serial.println("Berjaya Disambungkan!");
+        client.subscribe("v1/devices/me/rpc/request/+");
+      } else {
+        Serial.print("Gagal, Kod ralat: ");
+        Serial.println(client.state());
+        delay(5000);
+      }
+    }
+  }
+
+  client.loop();
+}
