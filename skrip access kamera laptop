@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Mask Detection</title>
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@teachablemachine/image"></script>
+    <script src="https://cdn.jsdelivr.net/npm/paho-mqtt/mqtt.min.js"></script>
+</head>
+<body>
+    <h1>Mask Detection System</h1>
+    <video id="webcam" autoplay playsinline width="640" height="480"></video>
+    <p id="status">Loading model...</p>
+
+    <script>
+        // URL model Teachable Machine
+        const MODEL_URL = "YOUR_MODEL_URL"; // Ganti dengan link model Anda
+        let model, webcam, maxPredictions;
+
+        // Load model dan setup kamera
+        async function init() {
+            document.getElementById("status").innerText = "Loading model...";
+            model = await tmImage.load(MODEL_URL + "model.json", MODEL_URL + "metadata.json");
+            maxPredictions = model.getTotalClasses();
+
+            webcam = new tmImage.Webcam(640, 480, true); // Resolusi kamera
+            await webcam.setup();
+            await webcam.play();
+            document.getElementById("webcam").appendChild(webcam.canvas);
+
+            window.requestAnimationFrame(loop);
+            document.getElementById("status").innerText = "Model loaded. Start detection!";
+        }
+
+        // Prediksi secara real-time
+        async function loop() {
+            webcam.update();
+            await predict();
+            window.requestAnimationFrame(loop);
+        }
+
+        // Lakukan prediksi dan kirim ke ESP8266
+        async function predict() {
+            const predictions = await model.predict(webcam.canvas);
+            let bestPrediction = predictions[0];
+            for (let i = 1; i < predictions.length; i++) {
+                if (predictions[i].probability > bestPrediction.probability) {
+                    bestPrediction = predictions[i];
+                }
+            }
+
+            // Tampilkan prediksi
+            document.getElementById("status").innerText = `Detected: ${bestPrediction.className} (${(bestPrediction.probability * 100).toFixed(2)}%)`;
+
+            // Kirim prediksi melalui MQTT jika confidence > 90%
+            if (bestPrediction.probability > 0.9) {
+                sendMQTTMessage(bestPrediction.className);
+            }
+        }
+
+        // MQTT untuk komunikasi dengan ESP8266
+        const mqttClient = new Paho.MQTT.Client("ESP8266_IP_ADDRESS", 1883, "MaskDetectionClient");
+        mqttClient.connect({
+            onSuccess: () => console.log("MQTT Connected"),
+            onFailure: (e) => console.log("MQTT Connection Failed", e),
+        });
+
+        function sendMQTTMessage(message) {
+            const mqttMessage = new Paho.MQTT.Message(message);
+            mqttMessage.destinationName = "mask_detection";
+            mqttClient.send(mqttMessage);
+        }
+
+        // Mulai aplikasi
+        init();
+    </script>
+</body>
+</html>
