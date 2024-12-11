@@ -163,3 +163,25 @@ void reconnectMQTT() {
     }
   }
 }
+
+
+Cipta Dashboard di ThingsBoard
+Pergi ke Menu Dashboard:
+
+Klik Dashboards di menu kiri.
+Tambah Dashboard Baharu:
+
+Klik + Add Dashboard.
+Berikan nama seperti "Sistem Keselamatan Dashboard".
+Klik Add untuk mencipta dashboard.
+Tambah Widget ke Dashboard:
+
+Buka dashboard yang baru dicipta.
+Klik + Add New Widget.
+Pilih kategori widget (contoh: Cards, Telemetry, atau Charts).
+Pilih jenis widget yang sesuai (contoh: Entity Table, Gauge, atau Line Chart).
+Konfigurasi Widget:
+
+Pilih peranti yang dicipta sebelumnya.
+Pilih telemetri yang ingin dipaparkan (contoh: pintu, id_kad, status_akses).
+Klik Add untuk menambah widget ke dashboard.
