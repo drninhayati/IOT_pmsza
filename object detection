@@ -1,0 +1,64 @@
+#include <ESP8266WiFi.h>
+#include <PubSubClient.h>
+
+// WiFi dan MQTT
+const char* ssid = "Your_SSID";
+const char* password = "Your_PASSWORD";
+const char* mqtt_server = "Your_Computer_IP";
+
+WiFiClient espClient;
+PubSubClient client(espClient);
+
+// Pin untuk buzzer
+const int buzzerPin = D1;
+
+void setup() {
+    pinMode(buzzerPin, OUTPUT);
+    digitalWrite(buzzerPin, LOW);
+
+    Serial.begin(115200);
+    WiFi.begin(ssid, password);
+
+    while (WiFi.status() != WL_CONNECTED) {
+        delay(500);
+        Serial.print(".");
+    }
+    Serial.println("WiFi connected");
+
+    client.setServer(mqtt_server, 1883);
+    client.setCallback(callback);
+}
+
+void callback(char* topic, byte* payload, unsigned int length) {
+    char message[length + 1];
+    for (int i = 0; i < length; i++) {
+        message[i] = (char)payload[i];
+    }
+    message[length] = '\0';
+
+    String prediction = String(message);
+    Serial.println("Prediction: " + prediction);
+
+    if (prediction == "With Mask") {
+        digitalWrite(buzzerPin, HIGH);
+        delay(1000);  // Buzzer berbunyi 1 detik
+        digitalWrite(buzzerPin, LOW);
+    }
+}
+
+void reconnect() {
+    while (!client.connected()) {
+        if (client.connect("ESP8266Client")) {
+            client.subscribe("mask_detection");
+        } else {
+            delay(5000);
+        }
+    }
+}
+
+void loop() {
+    if (!client.connected()) {
+        reconnect();
+    }
+    client.loop();
+}
