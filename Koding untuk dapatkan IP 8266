@@ -1,0 +1,13 @@
+void setup() {
+    Serial.begin(115200);
+    WiFi.begin("Your_SSID", "Your_PASSWORD");
+
+    while (WiFi.status() != WL_CONNECTED) {
+        delay(500);
+        Serial.print(".");
+    }
+
+    Serial.println("WiFi connected");
+    Serial.print("ESP8266 IP Address: ");
+    Serial.println(WiFi.localIP());
+}
