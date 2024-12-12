@@ -1,0 +1,63 @@
+#include <ESP8266WiFi.h>
+#include <PubSubClient.h>
+
+// WiFi dan MQTT
+const char* ssid = "Your_SSID";
+const char* password = "Your_PASSWORD";
+const char* mqtt_server = "Your_Computer_IP";
+
+WiFiClient espClient;
+PubSubClient client(espClient);
+
+const int ledPin = D1; // Pin LED
+
+void setup() {
+    pinMode(ledPin, OUTPUT);
+    digitalWrite(ledPin, LOW);
+
+    Serial.begin(115200);
+    WiFi.begin(ssid, password);
+    while (WiFi.status() != WL_CONNECTED) {
+        delay(500);
+        Serial.print(".");
+    }
+    Serial.println("WiFi connected");
+
+    client.setServer(mqtt_server, 1883);
+    client.setCallback(callback);
+    reconnect();
+}
+
+void callback(char* topic, byte* payload, unsigned int length) {
+    char message[length + 1];
+    for (int i = 0; i < length; i++) {
+        message[i] = (char)payload[i];
+    }
+    message[length] = '\0';
+
+    String prediction = String(message);
+    Serial.println("Prediction: " + prediction);
+
+    if (prediction == "With Mask") {
+        digitalWrite(ledPin, HIGH); // Nyalakan LED
+    } else {
+        digitalWrite(ledPin, LOW); // Matikan LED
+    }
+}
+
+void reconnect() {
+    while (!client.connected()) {
+        if (client.connect("ESP8266Client")) {
+            client.subscribe("mask_detection");
+        } else {
+            delay(5000);
+        }
+    }
+}
+
+void loop() {
+    if (!client.connected()) {
+        reconnect();
+    }
+    client.loop();
+}
