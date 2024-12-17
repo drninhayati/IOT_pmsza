@@ -1,54 +1,55 @@
 #include <ESP8266WiFi.h>
 #include <PubSubClient.h>
 
-// WiFi dan MQTT
+// WiFi dan ThingsBoard
 const char* ssid = "Your_SSID";
 const char* password = "Your_PASSWORD";
-const char* mqtt_server = "Your_Computer_IP";
+const char* mqtt_server = "Your_ThingsBoard_Server";
+const char* access_token = "Your_Access_Token";
 
 WiFiClient espClient;
 PubSubClient client(espClient);
 
-const int ledPin = D1; // Pin LED
+const int ledPin = D1;
 
 void setup() {
+    Serial.begin(115200);
     pinMode(ledPin, OUTPUT);
     digitalWrite(ledPin, LOW);
 
-    Serial.begin(115200);
     WiFi.begin(ssid, password);
     while (WiFi.status() != WL_CONNECTED) {
         delay(500);
         Serial.print(".");
     }
-    Serial.println("WiFi connected");
+    Serial.println("WiFi connected!");
 
     client.setServer(mqtt_server, 1883);
     client.setCallback(callback);
+
     reconnect();
 }
 
 void callback(char* topic, byte* payload, unsigned int length) {
-    char message[length + 1];
-    for (int i = 0; i < length; i++) {
-        message[i] = (char)payload[i];
-    }
-    message[length] = '\0';
+    payload[length] = '\0'; // Tambahkan null terminator
+    String message = String((char*)payload);
+    Serial.println("Message: " + message);
 
-    String prediction = String(message);
-    Serial.println("Prediction: " + prediction);
-
-    if (prediction == "With Mask") {
-        digitalWrite(ledPin, HIGH); // Nyalakan LED
+    // Jika "With Mask", nyalakan LED
+    if (message.indexOf("With Mask") != -1) {
+        digitalWrite(ledPin, HIGH);
+        Serial.println("LED ON: With Mask detected!");
     } else {
-        digitalWrite(ledPin, LOW); // Matikan LED
+        digitalWrite(ledPin, LOW);
+        Serial.println("LED OFF");
     }
 }
 
 void reconnect() {
     while (!client.connected()) {
-        if (client.connect("ESP8266Client")) {
-            client.subscribe("mask_detection");
+        if (client.connect("ESP8266Client", access_token, NULL)) {
+            client.subscribe("v1/devices/me/telemetry"); // Topik untuk ThingsBoard
+            Serial.println("Connected to ThingsBoard");
         } else {
             delay(5000);
         }
